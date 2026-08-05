@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Generated artifacts under results/ ARE committed on purpose: the README
+# embeds a figure, and a byte-identical `make reproduce` means `git diff` shows
+# exactly the numbers that moved. Only the API response cache is excluded.
+results/llm_cache.json

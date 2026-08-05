@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lure"
+version = "0.3.0"
+description = "Lure: the independent benchmark for agentic-commerce payment safety."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# The offline pipeline needs scikit-learn for the trained content classifier and
+# matplotlib for figure generation. It needs nothing else: no network, no API
+# keys, no randomness.
+dependencies = ["scikit-learn>=1.4", "matplotlib>=3.8"]
+
+[project.optional-dependencies]
+# The opt-in LLM tier. The offline core never imports this.
+llm = ["anthropic>=0.40"]
+dev = ["pytest==8.3.4"]
+
+[project.scripts]
+lure = "lure.cli:cli_entry"
+
+[tool.setuptools.packages.find]
+include = ["lure*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
