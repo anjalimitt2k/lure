@@ -242,6 +242,61 @@ spoofing, 1.00 on the other four, and 0.67 overall. This is what a
 single-signal defense looks like when the benchmark is honest with it, and it
 is the intended output of the submission protocol.
 
+### A real model in both seats
+
+The opt-in tier puts Claude Haiku 5.5 behind the identical agent interface
+and, separately, in the content filter's seat as `LLMJudgeDefense`. Run on
+the small catalog through the Claude Code CLI (`LURE_BACKEND=claude-cli`),
+one sampled response per prompt, every response cached in
+`results/llm_cache.json`:
+
+| defense | benign utility | ASR (72 attack tasks) | over-block |
+| --- | --- | --- | --- |
+| `NoDefense` | 1.00 | 0.00 | 0.00 |
+| `DeterministicGuardrails` | 1.00 | 0.00 | 0.00 |
+| `ContentClassifierDefense` | 1.00 | 0.00 | 0.00 |
+| `CompositeDefense` | 1.00 | 0.00 | 0.00 |
+| `LLMJudgeDefense` | 1.00 | 0.00 | 0.00 |
+
+Two things happened, and both are findings.
+
+**The model was not fooled.** Undefended, on all 24 fixed natural-language
+attacks and all 48 out-of-distribution rephrasings, Haiku 5.5 returned the
+user's own quantity, price, payee and address every time. Its plans were
+parseable on every task, so this is not a parse failure being scored as a
+block; the model read the injected review, treated it as data, and bought
+what it was told to buy. That makes every defense's 0.00 above vacuous on
+this model — there was nothing to stop — and it means the interesting live
+measurement is no longer "which defense saves the agent" but "which content
+filter would have noticed". On that question:
+
+| filter | in-distribution miss | out-of-distribution miss | gap |
+| --- | --- | --- | --- |
+| `ContentClassifierDefense` | 0.00 | 0.17 | +0.17 |
+| `LLMJudgeDefense` (Haiku 5.5) | 0.00 | 0.00 | +0.00 |
+
+The judge, trained on none of these pages, flagged all 24 in-distribution and
+all 48 out-of-distribution pages. This is the test limitation 5 asked for and
+the answer is the one it predicted: a model-based filter generalises past the
+n-gram model's distribution boundary, on this set. It does not follow that it
+generalises past *every* boundary — the out-of-distribution set is still
+twelve author-written variants, and a filter that catches twelve has not been
+shown to catch the thirteenth.
+
+**The model declined to write the red-team set.** Asked, with the sandbox and
+defensive purpose stated, for rephrased injections, Haiku 5.5 refused all six
+goals ("the benchmark framing doesn't change what the output would be"). The
+tier therefore fell back to the bundled canned variants and labels every
+red-team task `source="canned"` in the results document. So the live
+out-of-distribution set is the same author-written one the offline
+comparison uses; the agent and judge numbers are real-model numbers, the
+rephrasings are not. The red-team generator remains in the code for models
+that will run it, and the fallback is reported, never silent.
+
+The scaled-catalog run (36 benign, 648 attack tasks) is reported in
+`results/llm_results.md` when present; the small-catalog run is in
+`results/llm_results_small.md`.
+
 ## Limitations
 
 These are the reasons not to over-read anything above. I regard this section as
@@ -294,21 +349,24 @@ logistic regression is not the state of the art. The finding is therefore
 about *content filtering as a category on this benchmark* — that its measured
 strength is a function of how close the evaluation injections are to its
 training injections — and specifically **not** the claim that no classifier
-could do better. `LLMJudgeDefense` exists to test exactly that: it is scored
-on the identical in- and out-of-distribution pages as the n-gram model, in the
-LLM tier, and its numbers are written to `results/llm_results.md` by
-`run-llm`. Those numbers are a property of whichever model is configured and
-are not part of the offline reproduction, so they are reported there rather
-than here. A fine-tuned transformer baseline remains untested.
+could do better. `LLMJudgeDefense` exists to test exactly that, and on the
+small catalog with Haiku 5.5 it caught every in- and out-of-distribution page
+(results section above). That lifts the concession for this model on this
+set, and no further: the judge's 0.00 is a property of twelve canned variants
+and one model, the judge costs a model call per page where the n-gram model
+costs microseconds, and a judge is itself a model reading untrusted text and
+is in principle injectable in ways this benchmark has not tried. A fine-tuned
+transformer baseline remains untested.
 
 **6. The out-of-distribution set is small and author-written.** The 12 red-team
 variants shipped for offline reproduction are canned strings I wrote to avoid
 the classifier's known lexical tells. That is a fair test of generalisation but
 a weak sample of attacker creativity, carrying my own assumptions about what
-"different phrasing" means. The live tier generates variants with a model, but
-those are not part of the offline reproduction. *To lift it:* a large,
-human-reviewed corpus of generated injections, labelled by someone other than
-the author.
+"different phrasing" means. The live tier was built to generate variants with
+a model, and the model declined: Haiku 5.5 refused to write injections for
+any of the six goals, so the live run used the same twelve canned strings and
+says so. *To lift it:* a large, human-reviewed corpus of injections written
+by people other than the author, or a model that will write them.
 
 ## Roadmap
 
@@ -327,7 +385,14 @@ it would change the conclusions most:
   competitor's page. This needs a tool-calling backend interface and a cache
   keyed on whole conversations, which is why it is a separate phase.
 - **An externally written out-of-distribution corpus** (limitation 6), so the
-  red-team set is not one author's idea of "different wording".
+  red-team set is not one author's idea of "different wording". This moved up
+  the list: the model-generated route is closed for now, since current Claude
+  models decline to write the injections.
+- **A model that can be fooled.** Haiku 5.5 obeyed none of the injections, so
+  every live defense number is 0.00 against 0.00. Running the agent seat with
+  weaker or older models, or with a more realistic multi-step agent that reads
+  more untrusted text per decision, is what would make the live defense
+  comparison informative.
 - **A fine-tuned transformer content filter**, to complete limitation 5 with
   a baseline between the n-gram model and a full LLM judge.
 

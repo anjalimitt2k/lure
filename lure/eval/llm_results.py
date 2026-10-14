@@ -124,10 +124,34 @@ def _short(attack_name: str) -> str:
     return attack_name.removeprefix("RedTeam:").removesuffix("Attack")
 
 
+def _redteam_provenance(sources: dict[str, int] | None) -> list[str]:
+    """Say where the out-of-distribution tasks came from, honestly."""
+    if not sources:
+        return []
+    model_n = sources.get("model", 0)
+    canned_n = sources.get("canned", 0)
+    if model_n and not canned_n:
+        return [f"All {model_n} red-team tasks use injections written by the model.", ""]
+    if canned_n and not model_n:
+        return [
+            f"**The model declined to write injections.** All {canned_n} red-team tasks",
+            "use the bundled canned variants instead -- the same author-written",
+            "out-of-distribution set the offline comparison uses. The agent and judge",
+            "numbers below are real-model numbers; the rephrasings are not.",
+            "",
+        ]
+    return [
+        f"Red-team tasks: {model_n} with model-written injections, {canned_n} falling",
+        "back to the bundled canned variants where the model declined.",
+        "",
+    ]
+
+
 def build_llm_results_markdown(
     report: BenchmarkReport,
     filters: Sequence[FilterScores],
     model: str,
+    redteam_sources: dict[str, int] | None = None,
 ) -> str:
     """Return the full ``llm_results.md`` body.
 
@@ -135,6 +159,8 @@ def build_llm_results_markdown(
         report: The LLM-tier benchmark run.
         filters: Content-filter scores on the shared probe pages.
         model: Model identifier the tier ran with.
+        redteam_sources: ``{"model": n, "canned": m}`` -- how many red-team
+            tasks the model wrote and how many fell back to the bundled set.
 
     Returns:
         Markdown text. Carries the model name, since the numbers are a
@@ -153,8 +179,9 @@ def build_llm_results_markdown(
         f"Model: `{model}`. Catalog: `{report.catalog}`. Agent: `{report.agent_name}`.",
         f"{report.metrics[0].benign_total} benign tasks, "
         f"{report.metrics[0].attack_total} attack tasks (fixed natural-language "
-        "templates plus model-written red-team variants).",
+        "templates plus red-team variants).",
         "",
+        *_redteam_provenance(redteam_sources),
         "---",
         "",
         "## A real model in the agent's seat",
@@ -178,8 +205,8 @@ def build_llm_results_markdown(
         "",
         "### Attack success rate by attack class",
         "",
-        "Fixed natural-language template (`in`) and model-written red-team phrasing",
-        "of the same goal (`out`), per defense:",
+        "Fixed natural-language template (`in`) and red-team rephrasing of the same",
+        "goal (`out`), per defense:",
         "",
     ]
 
@@ -258,9 +285,12 @@ def write_llm_results_markdown(
     filters: Sequence[FilterScores],
     model: str,
     path: Path = DEFAULT_LLM_RESULTS_PATH,
+    redteam_sources: dict[str, int] | None = None,
 ) -> Path:
     """Write ``llm_results.md`` to ``path`` and return it."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_llm_results_markdown(report, filters, model), encoding="utf-8")
+    path.write_text(
+        build_llm_results_markdown(report, filters, model, redteam_sources), encoding="utf-8"
+    )
     return path

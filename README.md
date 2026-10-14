@@ -43,6 +43,16 @@ token at all.
 That is the point of this repository, and every number above regenerates
 offline with one command.
 
+With a real model in the loop (Claude Haiku 5.5, through the Claude Code
+CLI), two more things are measured. As the shopping agent, the model obeyed
+none of the 72 injected pages on the small catalog — undefended attack
+success 0.00, benign utility 1.00. As a content filter (`LLMJudgeDefense`),
+it flagged every poisoned page, in and out of distribution, where the n-gram
+classifier missed 17% out of distribution. And asked to write new injections
+for the red-team set, it declined; the live tier says so and falls back to
+the bundled variants. Full tables: [`results/llm_results_small.md`](results/llm_results_small.md)
+and [`docs/FINDINGS.md`](docs/FINDINGS.md).
+
 ## Quickstart (30 seconds)
 
 ```bash

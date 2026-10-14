@@ -34,7 +34,7 @@ from lure.eval.llm_results import (
     score_content_filters,
     write_llm_results_markdown,
 )
-from lure.eval.llm_suite import build_llm_tasks
+from lure.eval.llm_suite import build_llm_tasks, redteam_sources
 from lure.eval.loader import DefenseLoadError, load_defense
 from lure.eval.report import (
     DEFAULT_CSV_PATH,
@@ -288,6 +288,17 @@ def _run_llm(
             "The LLM tier became unavailable during setup; nothing was scored.\n"
         )
         return 0
+    sources = redteam_sources(tasks)
+    if sources["canned"] and not sources["model"]:
+        sys.stdout.write(
+            "The model declined to write red-team injections; using the bundled "
+            f"canned variants for all {sources['canned']} red-team tasks.\n\n"
+        )
+    elif sources["canned"]:
+        sys.stdout.write(
+            f"Red-team tasks: {sources['model']} model-written, {sources['canned']} "
+            "canned where the model declined.\n\n"
+        )
 
     defenses = default_defenses(marketplace)
     judge = LLMJudgeDefense(client) if include_judge else None
@@ -316,8 +327,10 @@ def _run_llm(
         tier="llm",
     )
     report.notes.append(
-        "Red-team rows (RedTeam:*) are model-written phrasings the content "
-        "classifier was not trained on."
+        "Red-team rows (RedTeam:*) are rephrasings the content classifier was not "
+        "trained on"
+        + (" (bundled canned variants: the model declined to write its own)."
+           if sources["canned"] and not sources["model"] else ".")
     )
     sys.stdout.write(format_report(report.metrics, report))
 
@@ -339,7 +352,9 @@ def _run_llm(
         return 0
 
     written_csv = write_metrics_csv(report.metrics, csv_path, report)
-    written_doc = write_llm_results_markdown(report, filters, client.model, results_path)
+    written_doc = write_llm_results_markdown(
+        report, filters, client.model, results_path, redteam_sources=sources
+    )
     sys.stdout.write(f"\nWrote {written_csv}\nWrote {written_doc}\n")
     return 0
 

@@ -186,17 +186,22 @@ class GeneratedInjectionAttack(Attack):
 
     surface = "review"
 
-    def __init__(self, base: Attack, text: str, variant: int = 0) -> None:
+    def __init__(
+        self, base: Attack, text: str, variant: int = 0, source: str = "model"
+    ) -> None:
         """Initialise with the goal-defining attack and the generated prose.
 
         Args:
             base: Attack supplying the scoring criterion.
-            text: Model-written injection.
+            text: The injection in its new wording.
             variant: Index used to keep task ids unique.
+            source: ``"model"`` when a model wrote the text, ``"canned"`` when
+                it came from the bundled set because the model declined to.
         """
         self.base = base
         self.text = text
         self.variant = variant
+        self.source = source
         self.name = f"RedTeam:{base.name}"
 
     def structured_payload(self) -> str:

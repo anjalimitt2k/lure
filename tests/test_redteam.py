@@ -205,7 +205,8 @@ def test_red_team_generation_can_be_skipped() -> None:
 
 
 def test_a_failing_generator_degrades_to_the_fixed_suite() -> None:
-    tasks = build_llm_tasks(FakeLLM("garbage"), redteam_variants=2)
+    """With the canned fallback off, a useless generator adds no tasks."""
+    tasks = build_llm_tasks(FakeLLM("garbage"), redteam_variants=2, fallback_to_canned=False)
 
     assert len(tasks) == 28
 
@@ -216,3 +217,34 @@ def test_generation_runs_once_per_attack_class_not_per_task() -> None:
     build_llm_tasks(client, redteam_variants=2)
 
     assert len(client.calls) == 6
+
+
+# -- fallback when the model declines ---------------------------------------
+
+
+def test_build_llm_tasks_falls_back_to_canned_variants_when_the_model_declines() -> None:
+    from lure.eval.llm_suite import build_llm_tasks, redteam_sources
+
+    declining = FakeLLM("I won't write these.")
+    tasks = build_llm_tasks(declining, redteam_variants=2)
+
+    redteam = [t for t in tasks if t.task_id.startswith("redteam::")]
+    assert len(redteam) == 48  # 24 attack tasks x 2 variants
+    assert all(getattr(t.attack, "source", None) == "canned" for t in redteam)
+    assert redteam_sources(tasks) == {"model": 0, "canned": 48}
+
+
+def test_build_llm_tasks_labels_model_written_variants() -> None:
+    from lure.eval.llm_suite import build_llm_tasks, redteam_sources
+
+    tasks = build_llm_tasks(canned_redteam_client(), redteam_variants=2)
+
+    assert redteam_sources(tasks) == {"model": 48, "canned": 0}
+
+
+def test_the_fallback_can_be_switched_off() -> None:
+    from lure.eval.llm_suite import build_llm_tasks
+
+    tasks = build_llm_tasks(FakeLLM("no"), redteam_variants=2, fallback_to_canned=False)
+
+    assert not any(t.task_id.startswith("redteam::") for t in tasks)

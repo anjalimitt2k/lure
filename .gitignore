@@ -8,5 +8,5 @@ dist/
 
 # Generated artifacts under results/ ARE committed on purpose: the README
 # embeds a figure, and a byte-identical `make reproduce` means `git diff` shows
-# exactly the numbers that moved. Only the API response cache is excluded.
-results/llm_cache.json
+# exactly the numbers that moved. The LLM response cache is committed too, so
+# the LLM-tier documents regenerate with no key and no CLI.
