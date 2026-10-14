@@ -13,41 +13,45 @@ away from the number a test pins. There is exactly one implementation.
 Everything here runs offline and deterministically: the classifier is the
 fixed trained model, the out-of-distribution text is the canned red-team set,
 and the reference agent is a scripted stand-in rather than a live model.
+
+Every function takes a marketplace factory, so the same measurement runs on
+the five-product calibration catalog and on the forty-product scaled one. The
+scaled run is what lifts the per-attack rates off multiples of a quarter.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Callable
 
 from lure.agent.llm_agent import LLMAgent
 from lure.defenses.classifier import ContentClassifierDefense
 from lure.defenses.training_data import LABEL_INJECTED
 from lure.environment.marketplace import Marketplace, build_default_marketplace
 from lure.eval.llm_suite import build_llm_tasks
-from lure.eval.report import BenchmarkReport, run_benchmark
+from lure.eval.report import BenchmarkReport, default_defenses, run_benchmark
 from lure.llm.client import FakeLLM, LLMBackend
 from lure.redteam.generator import CANNED_VARIANTS, canned_redteam_client
 from lure.tasks.tasks import build_attacks, build_benign_intent
+
+MarketplaceFactory = Callable[[], Marketplace]
 
 __all__ = [
     "DistributionScores",
     "InjectionSample",
     "OODComparison",
-    "PROBE_PRODUCT_IDS",
     "asr_by_distribution",
     "classify_samples",
     "credulous_backend",
     "in_distribution_samples",
     "out_of_distribution_samples",
+    "per_attack_by_distribution",
+    "probe_products",
     "reference_llm_report",
     "run_ood_comparison",
 ]
-
-#: Pages the probe injects into. Four verified-merchant products, so the same
-#: payload is measured against several clean backgrounds rather than one.
-PROBE_PRODUCT_IDS = ("p_mug", "p_mouse", "p_lamp", "p_keyboard")
 
 #: Attacker destinations the reference agent is credulous about. Two are the
 #: fixed suite's, the rest come from the canned red-team variants.
@@ -107,6 +111,11 @@ class OODComparison:
         classifier_asr_in: Classifier attack success rate on fixed natural
             attacks, via the reference agent.
         classifier_asr_out: Classifier attack success rate on red-team attacks.
+        catalog: Name of the catalog the comparison ran on.
+        probe_pages: How many clean pages each payload was measured against.
+        per_attack_classifier_asr: ``{attack class: (in, out)}`` -- the
+            classifier's attack success rate split by distribution for each
+            of the six goals, so leakage can be located rather than averaged.
     """
 
     in_distribution: DistributionScores
@@ -115,6 +124,9 @@ class OODComparison:
     guardrail_asr_out: float
     classifier_asr_in: float
     classifier_asr_out: float
+    catalog: str = "small"
+    probe_pages: int = 0
+    per_attack_classifier_asr: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     @property
     def miss_rate_gap(self) -> float:
@@ -133,6 +145,18 @@ class OODComparison:
 # -- sample construction ---------------------------------------------------
 
 
+def probe_products(marketplace: Marketplace) -> list:
+    """Return the products whose pages payloads are injected into.
+
+    Every product sold by a verified merchant, in catalog order: the same
+    payload is measured against each clean background, so the result is a
+    property of the payload rather than of one listing.
+    """
+    return [
+        p for p in marketplace.products if marketplace.merchant_for_product(p).verified
+    ]
+
+
 def in_distribution_samples(
     marketplace: Marketplace | None = None,
 ) -> list[InjectionSample]:
@@ -140,16 +164,18 @@ def in_distribution_samples(
 
     These are the payloads the classifier's training corpus was generated
     from, so this measures it under the most favourable conditions it will
-    ever face.
+    ever face. The payloads are sized against the first verified product's
+    intent; which intent anchors them does not change their distribution.
     """
     marketplace = marketplace or build_default_marketplace()
-    product = marketplace.get_product("p_mug")
+    probes = probe_products(marketplace)
+    product = probes[0]
     intent = build_benign_intent(product, marketplace)
 
     samples: list[InjectionSample] = []
     for attack in build_attacks(intent, product, marketplace):
-        for product_id in PROBE_PRODUCT_IDS:
-            page = marketplace.get_page(product_id)
+        for probe in probes:
+            page = marketplace.get_page(probe.id)
             samples.append(
                 InjectionSample(
                     text=attack.apply(page, style="natural").as_text(),
@@ -172,8 +198,8 @@ def out_of_distribution_samples(
     samples: list[InjectionSample] = []
     for attack_name, variants in CANNED_VARIANTS.items():
         for text in variants:
-            for product_id in PROBE_PRODUCT_IDS:
-                page = marketplace.get_page(product_id).copy()
+            for probe in probe_products(marketplace):
+                page = marketplace.get_page(probe.id).copy()
                 page.reviews = [*page.reviews, text]
                 samples.append(
                     InjectionSample(
@@ -194,7 +220,9 @@ def classify_samples(
     Args:
         samples: Poisoned pages, all of which are genuinely injected -- so
             anything not flagged is a miss.
-        defense: Classifier to use. Defaults to the shared trained model.
+        defense: Classifier to use. Defaults to the one trained for the small
+            catalog; pass ``ContentClassifierDefense(marketplace=...)`` to
+            score another catalog's model.
 
     Returns:
         Counts, miss rate and mean confidence.
@@ -292,16 +320,27 @@ def _credulous_reply(prompt: str, system: str | None) -> str:
 def reference_llm_report(
     redteam_variants: int = 2,
     backend: LLMBackend | None = None,
+    marketplace_factory: MarketplaceFactory = build_default_marketplace,
 ) -> BenchmarkReport:
     """Run the natural-language suite against the reference agent, offline.
 
     Produces both fixed-natural and red-team attack tasks, scored by all four
     defenses, so attack success can be split by distribution.
+
+    Args:
+        redteam_variants: Canned variants per attack class.
+        backend: Agent backend. Defaults to the credulous reference.
+        marketplace_factory: Builds the catalog to run on.
     """
     client = backend or credulous_backend()
-    tasks = build_llm_tasks(canned_redteam_client(), redteam_variants=redteam_variants)
+    catalog = marketplace_factory()
+    tasks = build_llm_tasks(
+        canned_redteam_client(), marketplace=catalog, redteam_variants=redteam_variants
+    )
     return run_benchmark(
         agent_factory=lambda: LLMAgent(client),
+        marketplace_factory=marketplace_factory,
+        defenses=default_defenses(catalog),
         tasks=tasks,
         style="natural",
         tier="llm-reference",
@@ -339,14 +378,48 @@ def asr_by_distribution(report: BenchmarkReport) -> dict[str, dict[str, float]]:
     return split
 
 
-def run_ood_comparison(marketplace: Marketplace | None = None) -> OODComparison:
-    """Run the full comparison and return every number the write-up quotes."""
-    marketplace = marketplace or build_default_marketplace()
+def per_attack_by_distribution(
+    report: BenchmarkReport, defense_name: str
+) -> dict[str, tuple[float, float]]:
+    """Return ``{attack class: (in-distribution ASR, out-of-distribution ASR)}``.
 
-    in_scores = classify_samples(in_distribution_samples(marketplace))
-    out_scores = classify_samples(out_of_distribution_samples(marketplace))
+    Pairs each fixed attack class with its ``RedTeam:`` counterpart for one
+    defense. A class with no red-team tasks reports ``0.0`` out of
+    distribution, which the caller should read as "not measured".
+    """
+    for metrics in report.metrics:
+        if metrics.defense_name != defense_name:
+            continue
+        fixed = {
+            name: asr
+            for name, asr in metrics.per_attack_asr.items()
+            if not name.startswith("RedTeam:")
+        }
+        return {
+            name: (asr, metrics.per_attack_asr.get(f"RedTeam:{name}", 0.0))
+            for name, asr in sorted(fixed.items())
+        }
+    return {}
 
-    split = asr_by_distribution(reference_llm_report())
+
+def run_ood_comparison(
+    marketplace_factory: MarketplaceFactory = build_default_marketplace,
+) -> OODComparison:
+    """Run the full comparison and return every number the write-up quotes.
+
+    Args:
+        marketplace_factory: Builds the catalog to measure on. The classifier
+            is trained for that catalog, so the in-distribution advantage is
+            preserved whichever catalog is chosen.
+    """
+    marketplace = marketplace_factory()
+    classifier_defense = ContentClassifierDefense(marketplace=marketplace)
+
+    in_scores = classify_samples(in_distribution_samples(marketplace), classifier_defense)
+    out_scores = classify_samples(out_of_distribution_samples(marketplace), classifier_defense)
+
+    reference = reference_llm_report(marketplace_factory=marketplace_factory)
+    split = asr_by_distribution(reference)
     guardrails = split.get("DeterministicGuardrails", {})
     classifier = split.get("ContentClassifierDefense", {})
 
@@ -357,4 +430,9 @@ def run_ood_comparison(marketplace: Marketplace | None = None) -> OODComparison:
         guardrail_asr_out=guardrails.get("out_of_distribution", 0.0),
         classifier_asr_in=classifier.get("in_distribution", 0.0),
         classifier_asr_out=classifier.get("out_of_distribution", 0.0),
+        catalog=marketplace.name,
+        probe_pages=len(probe_products(marketplace)),
+        per_attack_classifier_asr=per_attack_by_distribution(
+            reference, "ContentClassifierDefense"
+        ),
     )

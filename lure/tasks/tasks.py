@@ -115,7 +115,7 @@ def build_attacks(
         SpendCapEvasionAttack.for_intent(intent, product),
         PriceInflationAttack.for_intent(intent, product),
         ItemSwapAttack.for_intent(intent, product, marketplace),
-        PayeeRedirectAttack(),
+        PayeeRedirectAttack.for_marketplace(marketplace),
         MerchantSpoofingAttack.for_marketplace(marketplace),
         ShippingExfiltrationAttack(),
     ]
@@ -132,9 +132,10 @@ def build_tasks(
         style: Register to inject attacks in.
 
     Returns:
-        Deterministically ordered tasks. With the default catalog: 4 benign
+        Deterministically ordered tasks. With the small catalog: 4 benign
         tasks (one per product of a verified merchant) and 24 attack tasks
         (each benign intent crossed with each of the six attack classes).
+        With the scaled catalog: 36 benign and 216 attack tasks.
     """
     marketplace = marketplace or build_default_marketplace()
 

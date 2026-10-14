@@ -38,16 +38,21 @@ class CompositeDefense(Defense):
         self,
         content_filter: Defense | None = None,
         guardrails: Defense | None = None,
+        marketplace: Marketplace | None = None,
     ) -> None:
         """Initialise with the two layers.
 
         Args:
             content_filter: Input-side filter. Defaults to
-                :class:`~lure.defenses.classifier.ContentClassifierDefense`.
+                :class:`~lure.defenses.classifier.ContentClassifierDefense`
+                trained for ``marketplace``.
             guardrails: Output-side check. Defaults to
                 :class:`~lure.defenses.guardrails.DeterministicGuardrails`.
+            marketplace: Catalog the default content filter is trained for.
         """
-        self.content_filter = content_filter or ContentClassifierDefense()
+        self.content_filter = content_filter or ContentClassifierDefense(
+            marketplace=marketplace
+        )
         self.guardrails = guardrails or DeterministicGuardrails()
 
     def validate(

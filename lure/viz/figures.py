@@ -43,6 +43,7 @@ __all__ = [
     "plot_asr_by_defense",
     "plot_classifier_pr",
     "plot_defense_tradeoff",
+    "plot_ood_by_attack",
     "plot_ood_gap",
 ]
 
@@ -55,6 +56,7 @@ FIGURE_NAMES = (
     "fig_defense_tradeoff.png",
     "fig_ood_gap.png",
     "fig_classifier_pr.png",
+    "fig_ood_by_attack.png",
 )
 
 # -- fixed style -----------------------------------------------------------
@@ -358,10 +360,51 @@ def plot_classifier_pr(report: BenchmarkReport, path: Path) -> Path:
     return _save(fig, path)
 
 
+def plot_ood_by_attack(comparison: OODComparison, path: Path) -> Path:
+    """Paired bars: classifier ASR per attack class, in versus out of distribution.
+
+    Drawn from the scaled catalog so the bars are not quantised to quarters.
+    This is the figure that locates the leakage: an averaged miss rate says
+    the filter degrades; this says which fraud goals it degrades on.
+    """
+    _apply_style()
+    fig, ax = plt.subplots()
+
+    names = list(comparison.per_attack_classifier_asr)
+    in_values = [comparison.per_attack_classifier_asr[n][0] for n in names]
+    out_values = [comparison.per_attack_classifier_asr[n][1] for n in names]
+    width = 0.38
+    left = [i - width / 2 for i in range(len(names))]
+    right = [i + width / 2 for i in range(len(names))]
+
+    ax.bar(left, in_values, width=width, color=SERIES[0], label="in-distribution", zorder=3)
+    ax.bar(right, out_values, width=width, color=SERIES[1], label="out-of-distribution", zorder=3)
+    for positions, values in ((left, in_values), (right, out_values)):
+        for x, value in zip(positions, values):
+            if value > 0:
+                ax.text(x, value + 0.01, f"{value:.2f}", ha="center", va="bottom",
+                        fontsize=8, color=INK_PRIMARY)
+
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels([_short(n) for n in names], rotation=20, ha="right")
+    ax.set_ylabel("attack success rate under ContentClassifierDefense")
+    top = max([*in_values, *out_values, 0.05])
+    ax.set_ylim(0, top * 1.5)
+    ax.grid(axis="x", visible=False)
+    ax.set_title(
+        f"Where the content filter leaks ({comparison.catalog} catalog, "
+        f"{comparison.probe_pages} probe pages)"
+    )
+    ax.legend(loc="upper left")
+    _finish(ax, "Unlabelled bars are 0.00. Same six goals, template wording versus red-team wording.")
+    return _save(fig, path)
+
+
 def generate_all_figures(
     report: BenchmarkReport,
     comparison: OODComparison,
     output_dir: Path = DEFAULT_FIGURE_DIR,
+    scaled_comparison: OODComparison | None = None,
 ) -> list[Path]:
     """Generate every figure and return the paths written, in order.
 
@@ -369,6 +412,8 @@ def generate_all_figures(
         report: Offline benchmark results.
         comparison: In- versus out-of-distribution comparison.
         output_dir: Directory to write PNGs into. Created if absent.
+        scaled_comparison: The comparison on the scaled catalog. When omitted
+            the per-attack figure is drawn from ``comparison`` instead.
     """
     output_dir = Path(output_dir)
     return [
@@ -376,4 +421,5 @@ def generate_all_figures(
         plot_defense_tradeoff(report, output_dir / FIGURE_NAMES[1]),
         plot_ood_gap(comparison, output_dir / FIGURE_NAMES[2]),
         plot_classifier_pr(report, output_dir / FIGURE_NAMES[3]),
+        plot_ood_by_attack(scaled_comparison or comparison, output_dir / FIGURE_NAMES[4]),
     ]

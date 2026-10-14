@@ -188,7 +188,30 @@ def test_metrics_csv_is_readable_and_labelled(tmp_path, capsys) -> None:
         rows = list(csv.DictReader(handle))
 
     assert rows
-    assert {"tier", "agent", "style", "defense", "scope"} <= set(rows[0])
-    overall = {r["defense"]: r for r in rows if r["scope"] == "overall"}
+    assert {"tier", "agent", "style", "catalog", "defense", "scope"} <= set(rows[0])
+    overall = {
+        r["defense"]: r for r in rows if r["scope"] == "overall" and r["tier"] == "offline"
+    }
     assert float(overall["NoDefense"]["attack_success_rate"]) == 1.0
     assert float(overall["DeterministicGuardrails"]["attack_success_rate"]) == 0.0
+
+
+def test_metrics_csv_carries_both_catalogs_reference_rows(tmp_path, capsys) -> None:
+    """Every number RESULTS.md quotes has a row in the portable interface."""
+    _, results_dir = _reproduce_into(tmp_path)
+    capsys.readouterr()
+
+    with (results_dir / "metrics.csv").open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+
+    reference = [r for r in rows if r["tier"] == "llm-reference"]
+    assert {r["catalog"] for r in reference} == {"small", "large"}
+    assert {r["tier"] for r in rows} == {"offline", "llm-reference"}
+
+
+def test_results_md_carries_the_scaled_section(tmp_path, capsys) -> None:
+    text = _results_text(tmp_path, capsys)
+
+    assert "Scaled catalog" in text
+    assert "36 probe pages" in text
+    assert "by attack class" in text

@@ -11,6 +11,7 @@ from lure.environment.injection import (
     format_instruction,
     iter_injected_instructions,
 )
+from lure.environment.catalog import CATALOGS, build_large_marketplace, build_marketplace
 from lure.environment.marketplace import Marketplace, build_default_marketplace
 from lure.environment.models import (
     Cart,
@@ -24,6 +25,7 @@ from lure.environment.models import (
 )
 
 __all__ = [
+    "CATALOGS",
     "Cart",
     "CartItem",
     "CheckoutResult",
@@ -36,6 +38,8 @@ __all__ = [
     "PaymentMandate",
     "Product",
     "build_default_marketplace",
+    "build_large_marketplace",
+    "build_marketplace",
     "format_instruction",
     "iter_injected_instructions",
 ]

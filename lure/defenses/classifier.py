@@ -115,13 +115,19 @@ def _build_features() -> FeatureUnion:
     )
 
 
-def train_classifier() -> TrainedClassifier:
-    """Train on the fixed corpus and score on a deterministic held-out split.
+def train_classifier(marketplace: Marketplace | None = None) -> TrainedClassifier:
+    """Train on a catalog's corpus and score on a deterministic held-out split.
 
     Stratified so both classes appear in the held-out set regardless of corpus
     balance; ``liblinear`` because it is deterministic on data this size.
+
+    Args:
+        marketplace: Catalog whose pages and attacks seed the corpus. Defaults
+            to the small catalog. A classifier scored on the scaled catalog is
+            trained on the scaled catalog, so it keeps the same in-distribution
+            advantage there that it has on the small one.
     """
-    corpus = build_corpus()
+    corpus = build_corpus(marketplace)
 
     texts_train, texts_test, labels_train, labels_test = train_test_split(
         corpus.texts,
@@ -162,10 +168,16 @@ def train_classifier() -> TrainedClassifier:
     )
 
 
-@lru_cache(maxsize=1)
-def _cached_classifier() -> TrainedClassifier:
-    """Return the process-wide trained model, training it on first use."""
-    return train_classifier()
+@lru_cache(maxsize=8)
+def _cached_classifier(catalog_name: str) -> TrainedClassifier:
+    """Return the process-wide trained model for one catalog, training on first use.
+
+    Keyed by catalog name rather than by marketplace object so that every
+    fresh copy of the same catalog shares one model.
+    """
+    from lure.environment.catalog import build_marketplace
+
+    return train_classifier(build_marketplace(catalog_name))
 
 
 class ContentClassifierDefense(Defense):
@@ -173,14 +185,22 @@ class ContentClassifierDefense(Defense):
 
     name = "ContentClassifierDefense"
 
-    def __init__(self, model: TrainedClassifier | None = None) -> None:
+    def __init__(
+        self,
+        model: TrainedClassifier | None = None,
+        marketplace: Marketplace | None = None,
+    ) -> None:
         """Initialise with a trained model, training one if none is given.
 
         Args:
-            model: Pre-trained model to reuse. Defaults to the cached one, so
-                constructing the defense repeatedly costs nothing.
+            model: Pre-trained model to reuse.
+            marketplace: Catalog to train for when ``model`` is not given.
+                Defaults to the small catalog. Trained models are cached per
+                catalog, so constructing the defense repeatedly costs nothing.
         """
-        self.model = model or _cached_classifier()
+        if model is None:
+            model = _cached_classifier(marketplace.name if marketplace else "small")
+        self.model = model
 
     @property
     def precision(self) -> float:

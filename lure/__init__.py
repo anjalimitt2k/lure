@@ -8,15 +8,16 @@ This is a security / safety-measurement project, not a commerce product. The
 shopping marketplace, catalog and checkout flow exist only as a test
 environment; the scripted agent inside exists only to be attacked and scored.
 
-Phase 1 is a correctness proof of the harness itself: a deliberately naive
-agent must fall for every attack (ASR = 1.0) while deterministic guardrails
-must stop every attack (ASR = 0.0) without blocking a single legitimate
-purchase (over-block = 0.0).
+The offline core is a correctness proof of the harness itself: a deliberately
+naive agent must fall for every attack (ASR = 1.0) while deterministic
+guardrails must stop every attack (ASR = 0.0) without blocking a single
+legitimate purchase (over-block = 0.0). On top of that sit the in- versus
+out-of-distribution comparison for content filters, a scaled catalog, and an
+opt-in tier that puts a real model in the agent's seat and in the filter's.
 
-Everything here is deterministic and offline: standard library only, no
-network, no model calls, no randomness.
+The offline core is deterministic: no network, no model calls, no randomness.
 """
 
 __all__ = ["__version__"]
 
-__version__ = "0.1.0"
+__version__ = "0.4.0"

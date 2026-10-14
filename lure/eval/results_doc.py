@@ -177,6 +177,68 @@ def _core_section(report: BenchmarkReport) -> list[str]:
     return lines
 
 
+def _scaled_section(comparison: OODComparison) -> list[str]:
+    """Render the same comparison on the scaled catalog, per attack class.
+
+    The small catalog quantises every per-attack rate to a quarter. This
+    section is the same measurement with nine times as many clean backgrounds,
+    so a rate here can move by 1/36 rather than 1/4 -- and the leakage can be
+    located in the goals that produce it rather than averaged over six.
+    """
+    in_scores = comparison.in_distribution
+    out_scores = comparison.out_of_distribution
+    rows = [
+        [_short(name), f"{scores[0]:.2f}", f"{scores[1]:.2f}"]
+        for name, scores in comparison.per_attack_classifier_asr.items()
+    ]
+    return [
+        f"## Scaled catalog: {comparison.probe_pages} probe pages instead of four",
+        "",
+        "The identical comparison on the forty-product catalog (eight merchants, two",
+        "unverified), with the classifier retrained on that catalog's own corpus so it",
+        "keeps the same in-distribution advantage. Each payload is measured against",
+        f"{comparison.probe_pages} clean listings rather than four, so per-attack rates",
+        "are no longer multiples of a quarter.",
+        "",
+        *_table(
+            ["injections", "n", "classifier miss rate", "mean confidence"],
+            [
+                [
+                    "in-distribution (templates it trained on)",
+                    str(in_scores.n),
+                    f"{in_scores.miss_rate:.2f}",
+                    f"{in_scores.mean_confidence:.2f}",
+                ],
+                [
+                    "out-of-distribution (red-team phrasings)",
+                    str(out_scores.n),
+                    f"{out_scores.miss_rate:.2f}",
+                    f"{out_scores.mean_confidence:.2f}",
+                ],
+            ],
+        ),
+        "",
+        f"Miss-rate gap: **{comparison.miss_rate_gap:+.2f}**. "
+        f"Mean-confidence drop: **{comparison.confidence_drop:.2f}**. "
+        f"Guardrail ASR: {comparison.guardrail_asr_in:.2f} in-distribution, "
+        f"{comparison.guardrail_asr_out:.2f} out-of-distribution.",
+        "",
+        "### Where the classifier leaks, by attack class",
+        "",
+        "Attack success rate against the reference agent under `ContentClassifierDefense`,",
+        "fixed natural-language template versus red-team phrasing of the same goal:",
+        "",
+        *_table(["attack class", "in-distribution ASR", "out-of-distribution ASR"], rows),
+        "",
+        "Payee redirect and merchant spoofing stay at zero because the reference agent",
+        "only acts on the two account identifiers the canned variants name, and both",
+        "are tokens the classifier was trained on. The leakage sits in the goals that",
+        "can be written in plain English.",
+        "",
+        f"![classifier leakage by attack class, scaled catalog](figures/{FIGURE_NAMES[4]})",
+    ]
+
+
 def _submissions_section(metrics: Sequence[DefenseMetrics]) -> list[str]:
     """Render the submitted-defenses table.
 
@@ -223,12 +285,15 @@ def _submissions_section(metrics: Sequence[DefenseMetrics]) -> list[str]:
 def build_results_markdown(
     report: BenchmarkReport,
     comparison: OODComparison,
+    scaled_comparison: OODComparison | None = None,
 ) -> str:
     """Return the full ``RESULTS.md`` body.
 
     Args:
         report: Offline benchmark results.
-        comparison: In- versus out-of-distribution comparison.
+        comparison: In- versus out-of-distribution comparison on the small
+            catalog.
+        scaled_comparison: The same comparison on the scaled catalog, if run.
 
     Returns:
         Markdown text, deterministic and free of timestamps.
@@ -252,6 +317,11 @@ def build_results_markdown(
         "",
         "---",
         "",
+        *(
+            [*_scaled_section(scaled_comparison), "", "---", ""]
+            if scaled_comparison is not None
+            else []
+        ),
         *_submissions_section(report.metrics),
         "",
         "---",
@@ -274,9 +344,12 @@ def write_results_markdown(
     report: BenchmarkReport,
     comparison: OODComparison,
     path: Path = DEFAULT_RESULTS_PATH,
+    scaled_comparison: OODComparison | None = None,
 ) -> Path:
     """Write ``RESULTS.md`` to ``path`` and return it."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_results_markdown(report, comparison), encoding="utf-8")
+    path.write_text(
+        build_results_markdown(report, comparison, scaled_comparison), encoding="utf-8"
+    )
     return path

@@ -41,6 +41,7 @@ _CSV_HEADER = [
     "tier",
     "agent",
     "style",
+    "catalog",
     "defense",
     "scope",
     "benign_utility",
@@ -62,6 +63,7 @@ class BenchmarkReport:
         agent_name: Agent under test.
         style: Injection register the attacks were run in.
         tier: ``"offline"`` for the deterministic core, ``"llm"`` otherwise.
+        catalog: Name of the catalog the tasks were built against.
         classifier_precision: Held-out precision of the content classifier, if
             one was among the defenses.
         classifier_recall: Held-out recall of the content classifier, if one
@@ -74,23 +76,28 @@ class BenchmarkReport:
     agent_name: str = MockVulnerableAgent.name
     style: InjectionStyle = "structured"
     tier: str = "offline"
+    catalog: str = "small"
     classifier_precision: float | None = None
     classifier_recall: float | None = None
     notes: list[str] = field(default_factory=list)
 
 
-def default_defenses() -> list[Defense]:
+def default_defenses(marketplace: Marketplace | None = None) -> list[Defense]:
     """Return the four defenses, weakest control first.
 
     Ordered so a reader sees the undefended baseline, then each single-layer
     defense, then the composition -- the sequence the comparison is meant to
     be read in.
+
+    Args:
+        marketplace: Catalog the content classifier is trained for. Defaults
+            to the small catalog.
     """
     return [
         NoDefense(),
         DeterministicGuardrails(),
-        ContentClassifierDefense(),
-        CompositeDefense(),
+        ContentClassifierDefense(marketplace=marketplace),
+        CompositeDefense(marketplace=marketplace),
     ]
 
 
@@ -133,12 +140,9 @@ def run_benchmark(
     Returns:
         Scores and the underlying task outcomes.
     """
-    defenses = list(defenses) if defenses is not None else default_defenses()
-    task_list = (
-        list(tasks)
-        if tasks is not None
-        else build_tasks(marketplace_factory(), style=style)
-    )
+    catalog = marketplace_factory()
+    defenses = list(defenses) if defenses is not None else default_defenses(catalog)
+    task_list = list(tasks) if tasks is not None else build_tasks(catalog, style=style)
 
     metrics: list[DefenseMetrics] = []
     all_runs: list[TaskRun] = []
@@ -154,6 +158,7 @@ def run_benchmark(
         agent_name=agent_factory().name,
         style=style,
         tier=tier,
+        catalog=catalog.name,
         classifier_precision=precision,
         classifier_recall=recall,
     )
@@ -188,7 +193,10 @@ def format_report(
 
     title = "Lure -- agentic-commerce payment safety"
     if report is not None:
-        title += f"  [{report.tier} tier | {report.agent_name} | {report.style}]"
+        title += (
+            f"  [{report.tier} tier | {report.agent_name} | {report.style} | "
+            f"{report.catalog} catalog]"
+        )
 
     lines = [
         title,
@@ -284,6 +292,7 @@ def write_metrics_csv(
     tier = report.tier if report else "offline"
     agent_name = report.agent_name if report else ""
     style = report.style if report else "structured"
+    catalog = report.catalog if report else "small"
 
     appending = append and path.exists()
     mode = "a" if appending else "w"
@@ -298,6 +307,7 @@ def write_metrics_csv(
                     tier,
                     agent_name,
                     style,
+                    catalog,
                     m.defense_name,
                     "overall",
                     f"{m.benign_utility:.4f}",
@@ -313,6 +323,7 @@ def write_metrics_csv(
                         tier,
                         agent_name,
                         style,
+                        catalog,
                         m.defense_name,
                         name,
                         "",
@@ -332,6 +343,7 @@ def write_metrics_csv(
                         tier,
                         agent_name,
                         style,
+                        catalog,
                         "ContentClassifierDefense",
                         scope,
                         f"{value:.4f}",

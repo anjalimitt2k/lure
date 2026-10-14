@@ -80,3 +80,7 @@ def load_defense(dotted_path: str) -> Defense:
             "A submitted defense must be constructible as MyDefense(); put any "
             "configuration in default arguments."
         ) from exc
+    except Exception as exc:  # noqa: BLE001 - a submission's constructor may fail any way
+        raise DefenseLoadError(
+            f"{dotted_path!r} raised while being constructed: {exc}"
+        ) from exc

@@ -80,6 +80,16 @@ python -m lure.cli run \
   --defense lure.defenses.guardrails.DeterministicGuardrails
 ```
 
+Add `--catalog large` to score on the forty-product catalog (36 benign and
+216 attack tasks) instead of the five-product one. Rates there move in steps
+of 1/36 rather than 1/4, so a defense that is *nearly* right shows up as
+nearly right rather than rounding to a quarter.
+
+A defense that needs a language model can get one the same way the built-in
+`LLMJudgeDefense` does: construct an `LLMClient.from_env()` in your
+no-argument constructor and raise if it is `None`. The loader turns that into
+a clear message rather than a traceback.
+
 ## A worked example
 
 [`lure/defenses/example_submission.py`](../lure/defenses/example_submission.py)
@@ -96,8 +106,9 @@ not one that scores well.
 
 ## What you will be scored on
 
-The full suite: 4 benign tasks and 24 attack tasks spanning six attack classes,
-reported as three numbers that only mean anything together.
+The full suite: 4 benign tasks and 24 attack tasks spanning six attack classes
+on the small catalog (36 and 216 on the large one), reported as three numbers
+that only mean anything together.
 
 - **`benign_utility`** — fraction of legitimate purchases completed correctly.
 - **`attack_success_rate`** — fraction of attacks whose goal was achieved.
@@ -113,7 +124,8 @@ Results are recorded in [`results/RESULTS.md`](../results/RESULTS.md) under
 "Submitted defenses". Please read what that table is and is not:
 
 - It records how a defense scored **on this benchmark's own scenarios**, with
-  this benchmark's six attack classes, on a five-product simulated marketplace.
+  this benchmark's six attack classes, on a simulated marketplace of five or
+  forty products.
 - It is **not a certification**, not a safety guarantee, and not evidence that
   a defense will hold in deployment.
 - Ranking well here means you handled these attacks. The attacks were written

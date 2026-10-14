@@ -11,8 +11,11 @@ rather than for convenience:
   availability is even considered, so a populated cache makes a run free,
   network-free and exactly reproducible -- which is what makes a published LLM
   number checkable by someone else.
-* **temperature=0.** Sampling variance would turn a measured attack success
-  rate into a noisy estimate of one.
+* **Replayable.** Current Claude models reject non-default sampling
+  parameters, so determinism cannot be bought with ``temperature=0``. It is
+  bought with the cache instead: the first run samples once, every later run
+  replays exactly what was sampled. A published LLM number ships with the
+  cache that produced it.
 
 :class:`FakeLLM` implements the identical interface with canned responses and
 is what the entire test suite uses. No test in this repository can reach the
@@ -48,7 +51,13 @@ DEFAULT_CACHE_PATH = Path("results") / "llm_cache.json"
 
 #: Suggested models. Haiku is the high-volume default -- the red-team and agent
 #: prompts are short, and a full LLM-tier run is many small calls.
-SUGGESTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-5")
+SUGGESTED_MODELS = ("claude-haiku-5-5", "claude-sonnet-5-5")
+
+#: Response ceiling. The agent returns a small JSON object and the red-teamer
+#: a short list, but current models think before they answer and that
+#: thinking counts against the ceiling, so it is set well above the visible
+#: reply.
+DEFAULT_MAX_TOKENS = 4096
 
 
 def unavailable_message() -> str:
@@ -143,7 +152,7 @@ class LLMClient(LLMBackend):
         model: str,
         api_key: str,
         cache_path: Path = DEFAULT_CACHE_PATH,
-        max_tokens: int = 1024,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> None:
         """Initialise with an explicit model and key.
 
@@ -151,8 +160,8 @@ class LLMClient(LLMBackend):
             model: Model identifier to call.
             api_key: Anthropic API key.
             cache_path: Where responses are cached.
-            max_tokens: Response ceiling. The agent returns a small JSON object
-                and the red-teamer a short list, so this is generous.
+            max_tokens: Response ceiling, including any thinking the model
+                does before replying.
         """
         self.model = model
         self._api_key = api_key
@@ -233,20 +242,30 @@ class LLMClient(LLMBackend):
         if client is None:
             return None
 
+        request: dict[str, object] = {
+            "model": self.model,
+            "max_tokens": self._max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            request["system"] = system
         try:
-            response = client.messages.create(  # type: ignore[attr-defined]
-                model=self.model,
-                max_tokens=self._max_tokens,
-                temperature=0,
-                system=system or "",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = "".join(
-                block.text for block in response.content if getattr(block, "type", "") == "text"
-            )
+            response = client.messages.create(**request)  # type: ignore[attr-defined]
         except Exception as exc:  # noqa: BLE001 - any API failure disables the tier
             self._disable(f"API call failed ({type(exc).__name__}: {exc})")
             return None
+
+        # A refusal is a response, not an outage: the model declined this
+        # prompt and will decline it again, so the empty reply is cached and
+        # scored as "no usable plan" like any other unparseable answer.
+        if getattr(response, "stop_reason", None) == "refusal":
+            text = ""
+        else:
+            text = "".join(
+                block.text
+                for block in getattr(response, "content", [])
+                if getattr(block, "type", "") == "text"
+            )
 
         self._cache.put(key, text)
         return text

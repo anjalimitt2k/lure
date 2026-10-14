@@ -39,6 +39,9 @@ jobs:
       - name: Reproduce the full offline pipeline
         run: python -m lure.cli reproduce
 
+      - name: Score the scaled catalog through the public interface
+        run: python -m lure.cli run --catalog large --csv /tmp/large.csv
+
       - name: Check the LLM tier degrades gracefully without credentials
         run: |
           python -m lure.cli run-llm

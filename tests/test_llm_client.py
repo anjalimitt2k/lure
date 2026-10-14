@@ -32,7 +32,7 @@ def test_from_env_returns_none_with_only_a_key() -> None:
 
 
 def test_from_env_returns_none_with_only_a_model() -> None:
-    assert LLMClient.from_env(environ={MODEL_ENV: "claude-haiku-4-5-20251001"}) is None
+    assert LLMClient.from_env(environ={MODEL_ENV: "claude-haiku-5-5"}) is None
 
 
 def test_from_env_ignores_blank_values() -> None:
@@ -42,11 +42,11 @@ def test_from_env_ignores_blank_values() -> None:
 def test_from_env_builds_a_client_when_both_are_set(tmp_path) -> None:
     client = LLMClient.from_env(
         cache_path=tmp_path / "cache.json",
-        environ={API_KEY_ENV: "sk-test", MODEL_ENV: "claude-haiku-4-5-20251001"},
+        environ={API_KEY_ENV: "sk-test", MODEL_ENV: "claude-haiku-5-5"},
     )
 
     assert client is not None
-    assert client.model == "claude-haiku-4-5-20251001"
+    assert client.model == "claude-haiku-5-5"
     assert client.available is True
 
 
@@ -55,7 +55,7 @@ def test_unavailable_message_explains_both_variables() -> None:
 
     assert API_KEY_ENV in message
     assert MODEL_ENV in message
-    assert "claude-haiku-4-5-20251001" in message
+    assert "claude-haiku-5-5" in message
 
 
 # -- caching ---------------------------------------------------------------
@@ -164,15 +164,46 @@ def test_a_disabled_client_stops_calling_out(tmp_path) -> None:
     assert stub.calls == 1
 
 
-def test_requests_pin_temperature_to_zero(tmp_path) -> None:
+def test_requests_send_no_sampling_parameters(tmp_path) -> None:
+    """Current models reject non-default temperature; determinism is the cache's job."""
     client = LLMClient(model="m", api_key="k", cache_path=tmp_path / "c.json")
     stub = _StubSDK("ok")
     client._sdk_client = stub
 
     client.complete("hello", system="sys")
 
-    assert stub.last_kwargs["temperature"] == 0
+    assert "temperature" not in stub.last_kwargs
+    assert "top_p" not in stub.last_kwargs
     assert stub.last_kwargs["model"] == "m"
+    assert stub.last_kwargs["system"] == "sys"
+
+
+def test_requests_omit_an_empty_system_prompt(tmp_path) -> None:
+    client = LLMClient(model="m", api_key="k", cache_path=tmp_path / "c.json")
+    stub = _StubSDK("ok")
+    client._sdk_client = stub
+
+    client.complete("hello")
+
+    assert "system" not in stub.last_kwargs
+
+
+def test_a_refusal_is_cached_as_an_empty_reply(tmp_path) -> None:
+    """Declined prompts are a stable state of the model, not a transient failure."""
+    client = LLMClient(model="m", api_key="k", cache_path=tmp_path / "c.json")
+    stub = _StubSDK("should not be read")
+    client._sdk_client = stub
+    stub.messages.create = lambda **kwargs: _RefusedResponse()  # type: ignore[method-assign]
+
+    assert client.complete("hello") == ""
+    assert client.available is True
+    assert client.complete("hello") == ""
+
+
+class _RefusedResponse(_StubResponse):
+    def __init__(self) -> None:
+        super().__init__("declined text that must be ignored")
+        self.stop_reason = "refusal"
 
 
 # -- FakeLLM ---------------------------------------------------------------

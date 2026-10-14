@@ -3,7 +3,7 @@
 **A benchmark for whether an AI shopping agent can be talked into paying the
 wrong party.**
 
-[![CI](https://github.com/anjalimittapally/lure/actions/workflows/ci.yml/badge.svg)](https://github.com/anjalimittapally/lure/actions/workflows/ci.yml)
+[![CI](https://github.com/anjalimitt2k/lure/actions/workflows/ci.yml/badge.svg)](https://github.com/anjalimitt2k/lure/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
@@ -22,15 +22,22 @@ rephrases. Same six fraud goals, new wording:
 
 ![In- versus out-of-distribution classifier miss rate](results/figures/fig_ood_gap.png)
 
-| injections | n | miss rate | mean confidence |
-| --- | --- | --- | --- |
-| in-distribution (templates it trained on) | 24 | 0.00 | 0.96 |
-| out-of-distribution (red-team phrasings) | 48 | **0.17** | **0.66** |
+| catalog | injections | n | miss rate | mean confidence |
+| --- | --- | --- | --- | --- |
+| small (5 products) | in-distribution (templates it trained on) | 24 | 0.00 | 0.96 |
+| small (5 products) | out-of-distribution (red-team phrasings) | 48 | **0.17** | **0.66** |
+| large (40 products) | in-distribution | 216 | 0.00 | 1.00 |
+| large (40 products) | out-of-distribution | 432 | **0.08** | **0.72** |
 
-Its held-out scores — precision 1.00, recall 0.92 — describe only the first
-row. Deterministic guardrails, which never read the page at all and instead
-recompute the transaction from the catalog and compare it against the user's
-mandate, hold at **0.00 attack success on both**.
+Its held-out scores — precision 1.00, recall 0.92 — describe only the
+in-distribution rows. Deterministic guardrails, which never read the page at
+all and instead recompute the transaction from the catalog and compare it
+against the user's mandate, hold at **0.00 attack success on both** rows and
+both catalogs. On the large catalog the leakage can be located: it sits
+entirely in the two goals whose rephrasings contain no account or address
+token at all.
+
+![Classifier leakage by attack class on the scaled catalog](results/figures/fig_ood_by_attack.png)
 
 **Clean, in-distribution benchmarks can overstate content-filter defenses.**
 That is the point of this repository, and every number above regenerates
@@ -39,19 +46,20 @@ offline with one command.
 ## Quickstart (30 seconds)
 
 ```bash
-git clone https://github.com/anjalimittapally/lure && cd lure
+git clone https://github.com/anjalimitt2k/lure && cd lure
 make install
 make reproduce
 ```
 
 No API key, no network, no configuration. `make reproduce` runs the whole
 offline pipeline and writes `results/RESULTS.md`, `results/metrics.csv` and
-four figures — byte-identically, so a clean `git diff` afterwards means no
+five figures — byte-identically, so a clean `git diff` afterwards means no
 number moved.
 
 ## Results snapshot
 
-Four defenses, six attack classes, 4 benign and 24 attack tasks:
+Four offline defenses, six attack classes, 4 benign and 24 attack tasks on the
+small catalog (36 and 216 on the large one):
 
 | defense | benign utility | attack success | over-block |
 | --- | --- | --- | --- |
@@ -61,7 +69,7 @@ Four defenses, six attack classes, 4 benign and 24 attack tasks:
 | `CompositeDefense` | 1.00 | **0.00** | 0.00 |
 
 Every attack lands undefended, which is what proves the attacks and the scorer
-work. Full tables, per-attack breakdowns and all four figures:
+work. Full tables, per-attack breakdowns on both catalogs and all five figures:
 [`results/RESULTS.md`](results/RESULTS.md).
 
 ## Read more
@@ -117,7 +125,14 @@ metadata: spend-cap evasion, price inflation, item swap, payee redirect,
 merchant spoofing, shipping exfiltration. Each renders the same fraud goal
 twice — as a structured token for the scripted agent, and as natural-language
 prose for a real model — and is scored identically in both, on outcomes rather
-than on wording.
+than on wording. Goals are destination *classes*, not strings: payee redirect
+scores any account the catalog does not know, shipping exfiltration any
+address but the user's.
+
+**Two catalogs.** A five-product calibration catalog small enough to check by
+hand, and a forty-product scaled catalog (eight merchants, two unverified) on
+which per-attack rates move in steps of 1/36 instead of 1/4. Every command
+takes `--catalog small|large`.
 
 **Two agents** behind one interface: a scripted maximally-credulous agent that
 makes every attack land (the upper bound on the attack surface, and what lets
@@ -125,39 +140,56 @@ the harness be validated against known-correct answers), and an `LLMAgent` that
 puts a real model behind the identical `run(intent, marketplace, defense)`
 signature.
 
-**Four defenses**: no defense (the control), deterministic outcome-level
+**Five defenses**: no defense (the control), deterministic outcome-level
 guardrails, a genuinely trained TF-IDF + logistic-regression content
-classifier, and the two layered.
+classifier, the two layered, and — in the LLM tier — an `LLMJudgeDefense` that
+puts a language model in the content filter's seat, scored on the identical
+pages as the n-gram model.
 
 **Two tiers.** The offline core is deterministic and needs no credentials. The
 opt-in LLM tier (`python -m lure.cli run-llm`) needs `ANTHROPIC_API_KEY` and
-`LURE_MODEL`, caches every response, and prints how to enable itself and exits
-0 when unconfigured. **No test in this repository touches the network**, with
-or without credentials present.
+`LURE_MODEL`, caches every response in `results/llm_cache.json`, writes
+`results/llm_results.md`, and prints how to enable itself and exits 0 when
+unconfigured. **No test in this repository touches the network**, with or
+without credentials present.
 
 ## Commands
 
 ```bash
-make reproduce   # everything: core, OOD comparison, figures, RESULTS.md
-make test        # 261 tests, offline
+make reproduce   # everything offline: core, both OOD comparisons, figures, RESULTS.md
+make test        # 310 tests, offline
 make figures     # figures only
+make run-llm     # opt-in LLM tier on both catalogs (needs credentials, see below)
 
-python -m lure.cli run                              # deterministic core
-python -m lure.cli run --defense my.module.MyClass  # score your own defense
-python -m lure.cli run-llm                          # opt-in LLM tier
+python -m lure.cli run                               # deterministic core
+python -m lure.cli run --catalog large               # same, forty-product catalog
+python -m lure.cli run --defense my.module.MyClass   # score your own defense
+python -m lure.cli run-llm --catalog large           # real model as agent and as judge
 ```
+
+To run the LLM tier:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export LURE_MODEL=claude-haiku-5-5      # or claude-sonnet-5-5
+make run-llm
+```
+
+A full run on both catalogs is a few hundred short prompts on the small
+catalog and a few thousand on the large one; with Haiku that is well under a
+dollar, and every response is cached so a rerun is free.
 
 ## Honest scope
 
 Lure measures **its own defenses against its own attacks on its own simulated
-marketplace**. Five products, three merchants, no real payment rails. The
-attacks, the defenses and the scorer were written by the same person, which is
-exactly the setup that would tend to produce the result reported above — a
-circularity I cannot argue away from the inside.
+marketplace**. Five or forty products, no real payment rails. The attacks, the
+defenses and the scorer were written by the same person, which is exactly the
+setup that would tend to produce the result reported above — a circularity I
+cannot argue away from the inside.
 
 So a 0.00 attack success rate here means "this benchmark did not find a hole",
 not "this defense is safe". [`docs/FINDINGS.md`](docs/FINDINGS.md) states six
-limitations in full, with what would be needed to lift each.
+limitations in full, with what has been done about each and what has not.
 
 **Certification and an externally-populated leaderboard are roadmap, not
 current claims.** The submission protocol exists so that the honest version

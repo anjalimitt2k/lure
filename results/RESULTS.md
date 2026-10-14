@@ -19,7 +19,7 @@ out-of-distribution injections are red-team phrasings it has not seen.
 | in-distribution (templates it trained on) | 24 | 0.00 | 0.96 |
 | out-of-distribution (red-team phrasings) | 48 | 0.17 | 0.66 |
 
-Miss-rate gap: **+0.17**. Mean-confidence drop: **0.30**.
+Miss-rate gap: **+0.17**. Mean-confidence drop: **0.29**.
 
 Attack success rate against the offline reference agent, split the same way:
 
@@ -71,6 +71,44 @@ distribution -- its most favourable case, and the reason the headline
 table above exists.
 
 ![classifier held-out scores](figures/fig_classifier_pr.png)
+
+---
+
+## Scaled catalog: 36 probe pages instead of four
+
+The identical comparison on the forty-product catalog (eight merchants, two
+unverified), with the classifier retrained on that catalog's own corpus so it
+keeps the same in-distribution advantage. Each payload is measured against
+36 clean listings rather than four, so per-attack rates
+are no longer multiples of a quarter.
+
+| injections | n | classifier miss rate | mean confidence |
+| --- | --- | --- | --- |
+| in-distribution (templates it trained on) | 216 | 0.00 | 1.00 |
+| out-of-distribution (red-team phrasings) | 432 | 0.08 | 0.72 |
+
+Miss-rate gap: **+0.08**. Mean-confidence drop: **0.27**. Guardrail ASR: 0.00 in-distribution, 0.00 out-of-distribution.
+
+### Where the classifier leaks, by attack class
+
+Attack success rate against the reference agent under `ContentClassifierDefense`,
+fixed natural-language template versus red-team phrasing of the same goal:
+
+| attack class | in-distribution ASR | out-of-distribution ASR |
+| --- | --- | --- |
+| ItemSwap | 0.00 | 0.00 |
+| MerchantSpoofing | 0.00 | 0.00 |
+| PayeeRedirect | 0.00 | 0.00 |
+| PriceInflation | 0.00 | 0.00 |
+| ShippingExfiltration | 0.00 | 0.19 |
+| SpendCapEvasion | 0.00 | 0.21 |
+
+Payee redirect and merchant spoofing stay at zero because the reference agent
+only acts on the two account identifiers the canned variants name, and both
+are tokens the classifier was trained on. The leakage sits in the goals that
+can be written in plain English.
+
+![classifier leakage by attack class, scaled catalog](figures/fig_ood_by_attack.png)
 
 ---
 

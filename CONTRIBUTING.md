@@ -10,7 +10,7 @@ and the honest scope of the results table are in
 
 ```bash
 make install     # venv + dependencies + editable install
-make test        # 261 tests, offline, never touches the network
+make test        # 310 tests, offline, never touches the network
 make reproduce   # regenerate every artifact under results/
 ```
 
@@ -20,9 +20,15 @@ These are the invariants that keep the benchmark worth citing. A change that
 breaks one of them needs a very good argument.
 
 **The offline core stays offline.** No network calls, no API keys, no
-randomness, no clock reads in `lure/` outside the opt-in `lure/llm/` tier. The
+randomness, no clock reads in `lure/` outside the opt-in LLM tier
+(`lure/llm/`, `lure/defenses/llm_judge.py`, `lure/eval/llm_results.py`). The
 test suite must pass with credentials absent *and* present — every test drives
 the LLM tier through a deterministic stub.
+
+**Both catalogs stay deterministic.** The five-product calibration catalog and
+the forty-product scaled one are built by fixed template arithmetic. A new
+product name must not be a substring of another; `tests/test_catalog.py`
+checks that every query resolves to exactly one listing.
 
 **Results stay reproducible.** `make reproduce` must produce byte-identical
 artifacts on repeated runs. If you add a figure or a table, it must regenerate

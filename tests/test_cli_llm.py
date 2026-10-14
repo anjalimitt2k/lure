@@ -36,7 +36,7 @@ def test_run_llm_without_credentials_explains_how_to_enable(capsys) -> None:
 
     assert API_KEY_ENV in out
     assert MODEL_ENV in out
-    assert "claude-haiku-4-5-20251001" in out
+    assert "claude-haiku-5-5" in out
     assert "not enabled" in out
 
 

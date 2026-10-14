@@ -5,21 +5,23 @@ type: software
 authors:
   - family-names: Mittapally
     given-names: Anjali
-repository-code: "https://github.com/anjalimittapally/lure"
+repository-code: "https://github.com/anjalimitt2k/lure"
 license: MIT
-version: 0.3.0
+version: 0.4.0
 abstract: >-
   Lure measures whether an AI shopping agent can be manipulated, via content
   injected into a merchant page, into executing a payment its user never
   authorized. It models the AP2 intent/cart/payment mandate structure and
   defines attack success as an executed payment that diverges from the intent
   mandate that authorized it. Six attack classes are scored against four
-  defenses. The headline result is that a trained content classifier which
-  appears strong on in-distribution injections (held-out recall 0.92, 0.00 miss
-  rate) leaks on out-of-distribution natural-language rephrasings of the same
-  fraud goals (0.17 miss rate, mean confidence falling from 0.96 to 0.66),
-  while outcome-level deterministic guardrails hold at 0.00 attack success on
-  both. All results regenerate offline and byte-identically.
+  offline defenses and, in an opt-in tier, a real model agent and an LLM-judge
+  content filter. The headline result is that a trained content classifier
+  which appears strong on in-distribution injections (held-out recall 0.92,
+  0.00 miss rate) leaks on out-of-distribution natural-language rephrasings
+  of the same fraud goals (0.17 miss rate on the five-product catalog, 0.08
+  on the forty-product one, mean confidence falling from 0.96 to 0.66), while
+  outcome-level deterministic guardrails hold at 0.00 attack success on both.
+  All offline results regenerate with no credentials and byte-identically.
 keywords:
   - prompt-injection
   - agentic-commerce
