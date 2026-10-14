@@ -66,12 +66,12 @@ def test_the_markdown_carries_every_table_and_no_timestamp() -> None:
 
 
 class _StubClientFactory:
-    """Stands in for ``LLMClient`` in the CLI, returning a stub from the environment."""
+    """Stands in for ``backend_from_env`` in the CLI, returning a stub."""
 
     def __init__(self, backend: FakeLLM) -> None:
         self.backend = backend
 
-    def from_env(self, cache_path=None, environ=None):
+    def __call__(self, cache_path=None, environ=None):
         return self.backend
 
 
@@ -95,7 +95,7 @@ def _combined_backend() -> FakeLLM:
 def test_run_llm_end_to_end_with_a_stub_backend(tmp_path, monkeypatch, capsys) -> None:
     import lure.cli as cli
 
-    monkeypatch.setattr(cli, "LLMClient", _StubClientFactory(_combined_backend()))
+    monkeypatch.setattr(cli, "backend_from_env", _StubClientFactory(_combined_backend()))
     csv_path = tmp_path / "llm_metrics.csv"
     doc_path = tmp_path / "llm_results.md"
 
@@ -119,7 +119,7 @@ def test_run_llm_end_to_end_with_a_stub_backend(tmp_path, monkeypatch, capsys) -
 def test_run_llm_can_skip_the_judge_and_pick_the_catalog(tmp_path, monkeypatch, capsys) -> None:
     import lure.cli as cli
 
-    monkeypatch.setattr(cli, "LLMClient", _StubClientFactory(_combined_backend()))
+    monkeypatch.setattr(cli, "backend_from_env", _StubClientFactory(_combined_backend()))
     csv_path = tmp_path / "llm_metrics.csv"
 
     exit_code = main(

@@ -358,12 +358,13 @@ diff` afterwards means no number moved.
 - **Determinism:** fixed corpus construction, a pinned split
   (`random_state=0`), the `liblinear` solver, no calls to `random` or the
   clock, and suppressed PNG metadata so figures carry no build timestamp.
-- **Tests:** `make test` runs 310 tests, never touching the network with or
+- **Tests:** `make test` runs 326 tests, never touching the network with or
   without credentials present — the LLM tier runs through a deterministic stub.
-- **LLM tier:** `make run-llm` with `ANTHROPIC_API_KEY` and `LURE_MODEL` set
-  writes `results/llm_results.md` and caches every response in
+- **LLM tier:** `make run-llm` with `ANTHROPIC_API_KEY` and `LURE_MODEL` set,
+  or with `LURE_BACKEND=claude-cli` and a logged-in Claude Code CLI, writes
+  `results/llm_results.md` and caches every response in
   `results/llm_cache.json`; with that cache present the document regenerates
-  with no key.
+  with no key and no CLI.
 - **Provenance:** the tables in `results/RESULTS.md` come from the same
   functions the acceptance tests assert on (`run_benchmark`,
   `run_ood_comparison`), so a published table cannot disagree with a passing

@@ -10,7 +10,7 @@ and the honest scope of the results table are in
 
 ```bash
 make install     # venv + dependencies + editable install
-make test        # 310 tests, offline, never touches the network
+make test        # 326 tests, offline, never touches the network
 make reproduce   # regenerate every artifact under results/
 ```
 
@@ -21,7 +21,8 @@ breaks one of them needs a very good argument.
 
 **The offline core stays offline.** No network calls, no API keys, no
 randomness, no clock reads in `lure/` outside the opt-in LLM tier
-(`lure/llm/`, `lure/defenses/llm_judge.py`, `lure/eval/llm_results.py`). The
+(`lure/llm/`, `lure/defenses/llm_judge.py`, `lure/eval/llm_results.py`,
+`lure/eval/warm.py`). The
 test suite must pass with credentials absent *and* present — every test drives
 the LLM tier through a deterministic stub.
 

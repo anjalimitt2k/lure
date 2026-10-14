@@ -19,7 +19,7 @@ reproduce: ## Run the full offline pipeline; regenerate every artifact
 test: ## Run the test suite (offline, FakeLLM only, never the network)
 	$(PYTHON) -m pytest -q
 
-run-llm: ## Opt-in LLM tier (needs ANTHROPIC_API_KEY and LURE_MODEL); both catalogs
+run-llm: ## Opt-in LLM tier (API key, or LURE_BACKEND=claude-cli with Claude Code); both catalogs
 	$(PYTHON) -m lure.cli run-llm --catalog small --csv results/llm_metrics_small.csv --results results/llm_results_small.md
 	$(PYTHON) -m lure.cli run-llm --catalog large --csv results/llm_metrics.csv --results results/llm_results.md
 

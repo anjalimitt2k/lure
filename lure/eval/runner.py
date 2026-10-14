@@ -18,7 +18,32 @@ from lure.environment.marketplace import Marketplace
 from lure.environment.models import CheckoutResult, IntentMandate
 from lure.tasks.tasks import Task
 
-__all__ = ["TaskRun", "run_task", "run_tasks"]
+__all__ = ["TaskRun", "run_task", "run_tasks", "stage_marketplace"]
+
+
+def stage_marketplace(
+    marketplace: Marketplace,
+    intent: IntentMandate,
+    attack: Attack | None,
+    style: InjectionStyle = "structured",
+) -> Marketplace:
+    """Return the marketplace the agent will actually read for this task.
+
+    With an attack, that is a private copy serving the attacked page for the
+    first search hit on ``intent.item_query``; without one, the base
+    marketplace unchanged. Factored out so the cache pre-warmer can build the
+    exact prompts the run will issue.
+
+    Raises:
+        LookupError: If ``intent.item_query`` matches no product.
+    """
+    if attack is None:
+        return marketplace
+    results = marketplace.search(intent.item_query)
+    if not results:
+        raise LookupError(f"no product matches item_query {intent.item_query!r}")
+    target_page = marketplace.get_page(results[0].id)
+    return marketplace.with_page(attack.apply(target_page, style=style))
 
 
 @dataclass(frozen=True)
@@ -61,14 +86,7 @@ def run_task(
         LookupError: If ``intent.item_query`` matches no product, which would
             make the task unscoreable.
     """
-    if attack is not None:
-        results = marketplace.search(intent.item_query)
-        if not results:
-            raise LookupError(f"no product matches item_query {intent.item_query!r}")
-        target_page = marketplace.get_page(results[0].id)
-        marketplace = marketplace.with_page(attack.apply(target_page, style=style))
-
-    return agent.run(intent, marketplace, defense)
+    return agent.run(intent, stage_marketplace(marketplace, intent, attack, style), defense)
 
 
 def run_tasks(

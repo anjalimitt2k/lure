@@ -147,17 +147,17 @@ puts a language model in the content filter's seat, scored on the identical
 pages as the n-gram model.
 
 **Two tiers.** The offline core is deterministic and needs no credentials. The
-opt-in LLM tier (`python -m lure.cli run-llm`) needs `ANTHROPIC_API_KEY` and
-`LURE_MODEL`, caches every response in `results/llm_cache.json`, writes
-`results/llm_results.md`, and prints how to enable itself and exits 0 when
-unconfigured. **No test in this repository touches the network**, with or
+opt-in LLM tier (`python -m lure.cli run-llm`) runs through either an API key
+or a logged-in Claude Code CLI, caches every response in
+`results/llm_cache.json`, writes `results/llm_results.md`, and prints how to
+enable itself and exits 0 when unconfigured. **No test in this repository touches the network**, with or
 without credentials present.
 
 ## Commands
 
 ```bash
 make reproduce   # everything offline: core, both OOD comparisons, figures, RESULTS.md
-make test        # 310 tests, offline
+make test        # 326 tests, offline
 make figures     # figures only
 make run-llm     # opt-in LLM tier on both catalogs (needs credentials, see below)
 
@@ -167,7 +167,7 @@ python -m lure.cli run --defense my.module.MyClass   # score your own defense
 python -m lure.cli run-llm --catalog large           # real model as agent and as judge
 ```
 
-To run the LLM tier:
+To run the LLM tier with an API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -175,9 +175,20 @@ export LURE_MODEL=claude-haiku-5-5      # or claude-sonnet-5-5
 make run-llm
 ```
 
-A full run on both catalogs is a few hundred short prompts on the small
-catalog and a few thousand on the large one; with Haiku that is well under a
-dollar, and every response is cached so a rerun is free.
+Or with no key at all, through a Claude Code CLI that is already logged in
+(`claude -p` is invoked headlessly, with tools disabled and no session):
+
+```bash
+export LURE_BACKEND=claude-cli
+make run-llm
+```
+
+A full run is a few hundred short prompts on the small catalog and a few
+thousand on the large one. With an API key and Haiku that is well under a
+dollar and minutes; through the CLI each call is a fresh process, so the
+large catalog takes a few hours. Every response is cached under the same key
+either way, so a rerun is free and a committed cache replays with no
+credentials.
 
 ## Honest scope
 

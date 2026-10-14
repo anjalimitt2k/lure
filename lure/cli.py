@@ -44,7 +44,8 @@ from lure.eval.report import (
     write_metrics_csv,
 )
 from lure.eval.results_doc import write_results_markdown
-from lure.llm.client import DEFAULT_CACHE_PATH, LLMClient, unavailable_message
+from lure.eval.warm import collect_prompts, warm_cache
+from lure.llm.client import DEFAULT_CACHE_PATH, backend_from_env, unavailable_message
 from lure.redteam.ood_eval import reference_llm_report, run_ood_comparison
 from lure.viz.figures import generate_all_figures
 
@@ -138,6 +139,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-judge",
         action="store_true",
         help="skip the LLM judge defense and the content-filter comparison",
+    )
+    llm_parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help=(
+            "concurrent calls used to pre-fill the response cache before the "
+            "run (default: 4, 0 to answer every prompt in run order)"
+        ),
     )
     _add_catalog_option(llm_parser)
     return parser
@@ -254,13 +264,14 @@ def _run_llm(
     redteam_variants: int,
     catalog: str,
     include_judge: bool,
+    workers: int = 4,
 ) -> int:
     """Run the LLM tier, or explain how to enable it.
 
     Returns 0 in both cases. An unconfigured optional tier is not an error, and
     making it one would break any CI that runs the suite without secrets.
     """
-    client = LLMClient.from_env(cache_path=cache_path)
+    client = backend_from_env(cache_path=cache_path)
     if client is None:
         sys.stdout.write(unavailable_message() + "\n")
         return 0
@@ -282,6 +293,19 @@ def _run_llm(
     judge = LLMJudgeDefense(client) if include_judge else None
     if judge is not None:
         defenses.append(judge)
+
+    if workers > 0:
+        prompts = collect_prompts(tasks, marketplace, include_judge=judge is not None)
+        sys.stdout.write(
+            f"Pre-filling the cache: {len(prompts)} distinct prompts, {workers} in flight.\n"
+        )
+        warm_cache(client, prompts, workers=workers)
+        sys.stdout.write("\n")
+        if not client.available:
+            sys.stdout.write(
+                "The LLM tier became unavailable while pre-filling; nothing was scored.\n"
+            )
+            return 0
 
     report = run_benchmark(
         agent_factory=lambda: LLMAgent(client),
@@ -336,6 +360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.redteam_variants,
             args.catalog,
             include_judge=not args.no_judge,
+            workers=args.workers,
         )
     return 1
 

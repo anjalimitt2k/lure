@@ -28,22 +28,27 @@ import hashlib
 import json
 import os
 import sys
+import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Mapping
 
 __all__ = [
     "API_KEY_ENV",
+    "BACKEND_ENV",
     "DEFAULT_CACHE_PATH",
     "FakeLLM",
     "LLMBackend",
     "LLMClient",
     "MODEL_ENV",
+    "backend_from_env",
+    "cache_key",
     "unavailable_message",
 ]
 
 API_KEY_ENV = "ANTHROPIC_API_KEY"
 MODEL_ENV = "LURE_MODEL"
+BACKEND_ENV = "LURE_BACKEND"
 
 #: Cache lives beside the metrics so a published result and the responses that
 #: produced it travel together.
@@ -69,10 +74,14 @@ def unavailable_message() -> str:
         "offline benchmark (`python -m lure.cli run`) is unaffected and needs\n"
         "neither.\n"
         "\n"
-        "To enable it:\n"
+        "To enable it with an API key:\n"
         f"  export {API_KEY_ENV}=sk-ant-...\n"
         f"  export {MODEL_ENV}={SUGGESTED_MODELS[0]}\n"
         "  pip install -e '.[llm]'\n"
+        "\n"
+        "Or, with Claude Code installed and logged in, through its CLI:\n"
+        f"  export {BACKEND_ENV}=claude-cli\n"
+        f"  export {MODEL_ENV}={SUGGESTED_MODELS[0]}   # optional; this is the default\n"
         "\n"
         f"Suggested models: {SUGGESTED_MODELS[0]} (cheap, the high-volume\n"
         f"default) or {SUGGESTED_MODELS[1]} (stronger, more expensive).\n"
@@ -104,12 +113,26 @@ class LLMBackend(ABC):
         raise NotImplementedError
 
 
+def cache_key(model: str, system: str | None, prompt: str) -> str:
+    """Return the cache key for one request.
+
+    Shared by every backend so that a cache populated through one replays
+    through another: the key is a property of the request, not of the route.
+    """
+    payload = "\x00".join([model, system or "", prompt])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class _JsonCache:
-    """A small JSON-file cache of prompt hashes to responses."""
+    """A small JSON-file cache of prompt hashes to responses.
+
+    Safe to share across threads: the pre-warmer fills it concurrently.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self._entries: dict[str, str] | None = None
+        self._lock = threading.Lock()
 
     def _load(self) -> dict[str, str]:
         """Return the cache contents, reading from disk once.
@@ -129,19 +152,25 @@ class _JsonCache:
 
     def get(self, key: str) -> str | None:
         """Return the cached response for ``key``, if any."""
-        return self._load().get(key)
+        with self._lock:
+            return self._load().get(key)
 
     def put(self, key: str, value: str) -> None:
         """Store ``value`` under ``key`` and persist, ignoring write failures."""
-        entries = self._load()
-        entries[key] = value
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(
-                json.dumps(entries, indent=2, sort_keys=True), encoding="utf-8"
-            )
-        except OSError:
-            return
+        with self._lock:
+            entries = self._load()
+            entries[key] = value
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self.path.write_text(
+                    json.dumps(entries, indent=2, sort_keys=True), encoding="utf-8"
+                )
+            except OSError:
+                return
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._load())
 
 
 class LLMClient(LLMBackend):
@@ -222,8 +251,7 @@ class LLMClient(LLMBackend):
 
     def _cache_key(self, system: str | None, prompt: str) -> str:
         """Return the cache key for one request."""
-        payload = "\x00".join([self.model, system or "", prompt])
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return cache_key(self.model, system, prompt)
 
     def complete(self, prompt: str, system: str | None = None) -> str | None:
         """Return the model's response, from cache when possible.
@@ -269,6 +297,25 @@ class LLMClient(LLMBackend):
 
         self._cache.put(key, text)
         return text
+
+
+def backend_from_env(
+    cache_path: Path = DEFAULT_CACHE_PATH,
+    environ: Mapping[str, str] | None = None,
+) -> LLMBackend | None:
+    """Return the backend the environment selects, or ``None`` if none is configured.
+
+    ``LURE_BACKEND=claude-cli`` selects the Claude Code CLI, which needs no API
+    key and defaults its model when ``LURE_MODEL`` is unset. Anything else
+    goes through :meth:`LLMClient.from_env`, which needs both variables.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(BACKEND_ENV, "").strip().lower() == "claude-cli":
+        from lure.llm.cli_backend import DEFAULT_CLI_MODEL, ClaudeCLIBackend
+
+        model = env.get(MODEL_ENV, "").strip() or DEFAULT_CLI_MODEL
+        return ClaudeCLIBackend(model=model, cache_path=cache_path)
+    return LLMClient.from_env(cache_path=cache_path, environ=env)
 
 
 class FakeLLM(LLMBackend):
