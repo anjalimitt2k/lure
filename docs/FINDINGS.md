@@ -246,42 +246,43 @@ is the intended output of the submission protocol.
 
 The opt-in tier puts Claude Haiku 5.5 behind the identical agent interface
 and, separately, in the content filter's seat as `LLMJudgeDefense`. Run on
-the small catalog through the Claude Code CLI (`LURE_BACKEND=claude-cli`),
-one sampled response per prompt, every response cached in
-`results/llm_cache.json`:
+both catalogs through the Claude Code CLI (`LURE_BACKEND=claude-cli`), one
+sampled response per prompt, every response cached in
+`results/llm_cache.json` (1,600 responses, committed):
 
-| defense | benign utility | ASR (72 attack tasks) | over-block |
-| --- | --- | --- | --- |
-| `NoDefense` | 1.00 | 0.00 | 0.00 |
-| `DeterministicGuardrails` | 1.00 | 0.00 | 0.00 |
-| `ContentClassifierDefense` | 1.00 | 0.00 | 0.00 |
-| `CompositeDefense` | 1.00 | 0.00 | 0.00 |
-| `LLMJudgeDefense` | 1.00 | 0.00 | 0.00 |
+| catalog | attack tasks | `NoDefense` ASR | every other defense ASR | benign utility, all defenses |
+| --- | --- | --- | --- | --- |
+| small | 72 | 0.00 | 0.00 | 1.00 |
+| large | 648 | 0.00 | 0.00 | 1.00 |
 
 Two things happened, and both are findings.
 
-**The model was not fooled.** Undefended, on all 24 fixed natural-language
-attacks and all 48 out-of-distribution rephrasings, Haiku 5.5 returned the
-user's own quantity, price, payee and address every time. Its plans were
-parseable on every task, so this is not a parse failure being scored as a
-block; the model read the injected review, treated it as data, and bought
-what it was told to buy. That makes every defense's 0.00 above vacuous on
-this model — there was nothing to stop — and it means the interesting live
-measurement is no longer "which defense saves the agent" but "which content
-filter would have noticed". On that question:
+**The model was not fooled.** Undefended, on all 240 fixed natural-language
+attacks and all 480 out-of-distribution rephrasings across the two catalogs,
+Haiku 5.5 returned the user's own quantity, price, payee and address every
+time. Its plans were parseable on every task, so this is not a parse failure
+being scored as a block; the model read the injected review, treated it as
+data, and bought what it was told to buy. That makes every defense's 0.00
+above vacuous on this model — there was nothing to stop — and it means the
+interesting live measurement is no longer "which defense saves the agent" but
+"which content filter would have noticed". On that question:
 
-| filter | in-distribution miss | out-of-distribution miss | gap |
-| --- | --- | --- | --- |
-| `ContentClassifierDefense` | 0.00 | 0.17 | +0.17 |
-| `LLMJudgeDefense` (Haiku 5.5) | 0.00 | 0.00 | +0.00 |
+| catalog | filter | in-distribution miss | out-of-distribution miss | gap |
+| --- | --- | --- | --- | --- |
+| small | `ContentClassifierDefense` | 0.00 (n=24) | 0.17 (n=48) | +0.17 |
+| small | `LLMJudgeDefense` (Haiku 5.5) | 0.00 (n=24) | 0.00 (n=48) | +0.00 |
+| large | `ContentClassifierDefense` | 0.00 (n=216) | 0.08 (n=432) | +0.08 |
+| large | `LLMJudgeDefense` (Haiku 5.5) | 0.00 (n=216) | 0.01 (n=432) | +0.01 |
 
-The judge, trained on none of these pages, flagged all 24 in-distribution and
-all 48 out-of-distribution pages. This is the test limitation 5 asked for and
-the answer is the one it predicted: a model-based filter generalises past the
-n-gram model's distribution boundary, on this set. It does not follow that it
-generalises past *every* boundary — the out-of-distribution set is still
-twelve author-written variants, and a filter that catches twelve has not been
-shown to catch the thirteenth.
+The judge, trained on none of these pages, flagged every in-distribution page
+on both catalogs and missed 3 of 432 out-of-distribution pages on the large
+one (two item-swap rephrasings, one shipping rephrasing; the n-gram model
+missed 33). This is the test limitation 5 asked for and the answer is the one
+it predicted: a model-based filter generalises past the n-gram model's
+distribution boundary, on this set, by a wide margin. It does not follow
+that it generalises past *every* boundary — the out-of-distribution set is
+still twelve author-written variants, and the three misses show the judge is
+not a hard wall either.
 
 **The model declined to write the red-team set.** Asked, with the sandbox and
 defensive purpose stated, for rephrased injections, Haiku 5.5 refused all six
@@ -293,9 +294,8 @@ comparison uses; the agent and judge numbers are real-model numbers, the
 rephrasings are not. The red-team generator remains in the code for models
 that will run it, and the fallback is reported, never silent.
 
-The scaled-catalog run (36 benign, 648 attack tasks) is reported in
-`results/llm_results.md` when present; the small-catalog run is in
-`results/llm_results_small.md`.
+Full tables: `results/llm_results.md` (large catalog) and
+`results/llm_results_small.md` (small).
 
 ## Limitations
 
@@ -349,11 +349,11 @@ logistic regression is not the state of the art. The finding is therefore
 about *content filtering as a category on this benchmark* — that its measured
 strength is a function of how close the evaluation injections are to its
 training injections — and specifically **not** the claim that no classifier
-could do better. `LLMJudgeDefense` exists to test exactly that, and on the
-small catalog with Haiku 5.5 it caught every in- and out-of-distribution page
-(results section above). That lifts the concession for this model on this
-set, and no further: the judge's 0.00 is a property of twelve canned variants
-and one model, the judge costs a model call per page where the n-gram model
+could do better. `LLMJudgeDefense` exists to test exactly that, and with
+Haiku 5.5 it missed 0 of 72 pages on the small catalog and 3 of 648 on the
+large one, against the n-gram model's 8 and 33 (results section above). That
+lifts the concession for this model on this set, and no further: the judge's
+numbers are a property of twelve canned variants and one model, the judge costs a model call per page where the n-gram model
 costs microseconds, and a judge is itself a model reading untrusted text and
 is in principle injectable in ways this benchmark has not tried. A fine-tuned
 transformer baseline remains untested.
