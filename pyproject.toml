@@ -27,3 +27,7 @@ include = ["lure*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The submission tests load a Defense from `tests.test_submission` by dotted
+# path, exactly as a third party would load theirs; the repo root must be
+# importable whether the suite is started as `pytest` or `python -m pytest`.
+pythonpath = ["."]
