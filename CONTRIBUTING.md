@@ -3,14 +3,14 @@
 ## Submitting a defense or an attack
 
 That is the main thing this project wants. The full contract, a worked example
-and the honest scope of the results table are in
+and the scope of the results table are in
 **[docs/SUBMITTING.md](docs/SUBMITTING.md)**.
 
 ## Development setup
 
 ```bash
 make install     # venv + dependencies + editable install
-make test        # 326 tests, offline, never touches the network
+make test        # 329 tests, offline, never touches the network
 make reproduce   # regenerate every artifact under results/
 ```
 
@@ -23,7 +23,7 @@ breaks one of them needs a very good argument.
 randomness, no clock reads in `lure/` outside the opt-in LLM tier
 (`lure/llm/`, `lure/defenses/llm_judge.py`, `lure/eval/llm_results.py`,
 `lure/eval/warm.py`). The
-test suite must pass with credentials absent *and* present — every test drives
+test suite must pass with credentials absent *and* present; every test drives
 the LLM tier through a deterministic stub.
 
 **Both catalogs stay deterministic.** The five-product calibration catalog and
@@ -42,7 +42,7 @@ overwritten.
 
 **Acceptance numbers are pinned deliberately.** `tests/test_acceptance.py`
 asserts exact values. If your change moves one, that is not automatically a
-failure — but the pull request needs to explain *why* the number moved, in the
+failure, but the pull request needs to explain *why* the number moved, in the
 same way the findings write-up would have to.
 
 **Attack goals are outcome-based.** Scored on what the executed transaction

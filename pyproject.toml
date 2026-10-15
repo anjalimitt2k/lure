@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lure"
 version = "0.4.0"
-description = "Lure: the independent benchmark for agentic-commerce payment safety."
+description = "Lure: a benchmark for whether an AI shopping agent can be talked into paying the wrong party."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

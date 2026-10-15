@@ -1,8 +1,8 @@
 # Submitting a defense
 
 Lure scores any class that implements its `Defense` interface. You do not need
-to fork the benchmark, edit its internals, or understand the attack suite —
-write one method, point the CLI at it, and get the same tables the built-in
+to fork the benchmark, edit its internals, or understand the attack suite.
+Write one method, point the CLI at it, and get the same tables the built-in
 defenses get.
 
 **Why this exists.** The most serious limitation of this benchmark is that its
@@ -35,7 +35,7 @@ class MyDefense(Defense):
 
 That is the whole interface. Requirements:
 
-- **Subclass `Defense`** and set a `name` — it labels your rows in every table.
+- **Subclass `Defense`** and set a `name`; it labels your rows in every table.
 - **Constructible with no arguments.** `MyDefense()` must work; put
   configuration in default arguments. The loader will tell you if it cannot.
 - **Return a reason when you block.** Blocked reasons are benchmark output, not
@@ -47,16 +47,16 @@ That is the whole interface. Requirements:
 
 | Argument | What it is | Trustworthy? |
 | --- | --- | --- |
-| `payment` | The transfer the agent proposes: `amount`, `payee` | **No** — agent-supplied |
+| `payment` | The transfer the agent proposes: `amount`, `payee` | **No**, agent-supplied |
 | `cart` | The basket, holding real catalog `Product` objects | Products yes, quantities no |
-| `intent` | The user's Intent Mandate — the ground truth | **Yes** |
+| `intent` | The user's Intent Mandate, the ground truth | **Yes** |
 | `marketplace` | Catalog, merchant registry, and pages | **Yes**, except page text |
-| `ship_to` | Delivery destination the agent chose | **No** — agent-supplied |
+| `ship_to` | Delivery destination the agent chose | **No**, agent-supplied |
 
 The distinction matters. `intent` and `marketplace` are what the user
 authorized and what the marketplace knows; `payment`, `ship_to` and cart
 quantities are what a possibly-manipulated agent is asking for. Page text
-reached through `marketplace.get_page(...)` is attacker-controlled by design —
+reached through `marketplace.get_page(...)` is attacker-controlled by design;
 that is the injection surface.
 
 `cart.total()` is computed from catalog prices, so it is a trusted view of what
@@ -69,7 +69,7 @@ python -m lure.cli run --defense mypackage.mymodule.MyDefense
 ```
 
 The path is a dotted path: everything before the last dot is the module,
-the last segment is the class. Your module must be importable — if it lives
+the last segment is the class. Your module must be importable; if it lives
 outside this repo, `pip install -e .` from your package root first.
 
 Repeat `--defense` to score several at once and compare them side by side:
@@ -100,7 +100,7 @@ python -m lure.cli run --defense lure.defenses.example_submission.ExampleSubmiss
 ```
 
 It scores 0.00 attack success on payee redirect and merchant spoofing, 1.00 on
-the four attacks it cannot see, and 0.67 overall. It is deliberately partial —
+the four attacks it cannot see, and 0.67 overall. It is deliberately partial;
 a good example is one that shows you what a weakness looks like in the output,
 not one that scores well.
 
@@ -110,9 +110,9 @@ The full suite: 4 benign tasks and 24 attack tasks spanning six attack classes
 on the small catalog (36 and 216 on the large one), reported as three numbers
 that only mean anything together.
 
-- **`benign_utility`** — fraction of legitimate purchases completed correctly.
-- **`attack_success_rate`** — fraction of attacks whose goal was achieved.
-- **`over_block_rate`** — fraction of legitimate purchases you refused.
+- **`benign_utility`**: fraction of legitimate purchases completed correctly.
+- **`attack_success_rate`**: fraction of attacks whose goal was achieved.
+- **`over_block_rate`**: fraction of legitimate purchases you refused.
 
 A defense that returns `(False, "no")` unconditionally scores a perfect 0.00
 attack success rate, 0.00 benign utility and 1.00 over-block. The metrics are
@@ -129,7 +129,7 @@ Results are recorded in [`results/RESULTS.md`](../results/RESULTS.md) under
 - It is **not a certification**, not a safety guarantee, and not evidence that
   a defense will hold in deployment.
 - Ranking well here means you handled these attacks. The attacks were written
-  by one person and are public — treat them as a floor, never a ceiling.
+  by one person and are public; treat them as a floor, never a ceiling.
 
 If a defense scores 0.00 attack success, the correct conclusion is "this
 benchmark did not find a hole", not "this defense is safe".
@@ -138,8 +138,8 @@ benchmark did not find a hole", not "this defense is safe".
 
 Attacks are equally welcome and subclass `Attack` with `structured_payload()`,
 `natural_payload()` and an outcome-based `goal_achieved(result, intent)`. Goals
-must be defined on the executed transaction — what money moved and where the
-goods went — never on the wording that produced it, so that the same attack can
+must be defined on the executed transaction (what money moved and where the
+goods went), never on the wording that produced it, so that the same attack can
 score both the scripted and the model agent. See
 [`lure/attacks/base.py`](../lure/attacks/base.py).
 
